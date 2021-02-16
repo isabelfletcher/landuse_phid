@@ -274,6 +274,7 @@ p_comparison <- ggplot(dat) +
 p_comparison
 
 
+
 # ----------------- Why are these differences so pronounced? ------------------------
 
 # Let's take a look at Ninh Hoa in more detail, because there's such a big difference in the metrics shown in the previous graph.
@@ -343,10 +344,10 @@ ex_esa[[1]]
 calcForestChange = function(x){
   
   # the xth element of the list
-  xx <- ex_esa[[ x ]]
+  datx <- ex_esa[[ x ]]
   
-  xx <- reshape2::melt(xx, id.vars = c("area", "coverage_fraction")) # make longitudinal
-  xx <- xx %>%
+  datx <- reshape2::melt(datx, id.vars = c("area", "coverage_fraction")) # make longitudinal
+  datx <- datx %>%
     dplyr::filter(value == 1) %>% # keep only forested cells
     dplyr::mutate(area = area * coverage_fraction) %>% # multiply area by coverage fraction
     dplyr::group_by(variable) %>% # for each year
@@ -354,16 +355,16 @@ calcForestChange = function(x){
   
   # forest change from 1 year to the next 
   # n.b. we set 2001 to NA because we have no data to compare from the year before
-  xx$ForestChange <- c(NA, xx$ForestCover[ 2:nrow(xx)] - xx$ForestCover[ 1:(nrow(xx)-1)])
+  datx$ForestChange <- c(NA, datx$ForestCover[ 2:nrow(datx)] - datx$ForestCover[ 1:(nrow(datx)-1)])
   
   # cumulative forest change
-  xx$ForestChangeCumulative <- c(NA, cumsum(xx$ForestChange[ 2:nrow(xx)] ))
+  datx$ForestChangeCumulative <- c(NA, cumsum(datx$ForestChange[ 2:nrow(datx)] ))
   
   # finally, set variable to the year and index with the district name
-  xx$variable <- unlist(lapply(strsplit(as.vector(xx$variable), "_"), "[", 2))
-  xx <- rename(xx, "Year" = variable)
-  xx$district <- districts$areanameen[x]
-  return(xx)
+  datx$variable <- unlist(lapply(strsplit(as.vector(datx$variable), "_"), "[", 2))
+  datx <- rename(datx, "Year" = variable)
+  datx$district <- districts$areanameen[x]
+  return(datx)
 }
 
 # run for all districts
@@ -401,12 +402,12 @@ calcForestLossGFC = function(x){
   xx$lossyear <- xx$lossyear + 2000 # add 2000 to get year
   xx <- xx %>%
     dplyr::group_by(lossyear) %>%
-    dplyr::summarise(ForestLoss = sum(forest_baseyear))
+    dplyr::summarise(ForestLoss = sum(forest_baseyear)) %>%
+    dplyr::arrange(lossyear) %>%
+    dplyr::mutate(ForestLossCumulative = cumsum(ForestLoss),
+                  district = districts$areanameen[x]) %>%
+    dplyr::rename("Year"=1)
   
-  # calculate cumulative loss
-  xx$ForestLossCumulative <- cumsum(xx$ForestLoss)
-  xx <- rename(xx, "Year" = 1)
-  xx$district <- districts$areanameen[x]
   return(xx)
 }
 
@@ -428,7 +429,7 @@ ggplot() +
   theme_classic()
 
 
-# Let's plot some district-specific maps comparing forest extent and loss between the two datasets - and see if we can
+# Let's plot some district-specific maps comparing forest extent and loss between the two datasets - and see if we can figure out what's happening
 # What we can see is that this discrepancy seems to be largely caused by the tree cover losses (in Hansen dataset) 
 # occurring in areas that were already classed as "not forest" by ESA-CCI. This is because the categorical classification
 # Can only class 300m res cells as "forest/not forest", so cells that contain lots of tree-cover are still classed as "not forest" as they fall below this threshold
@@ -438,39 +439,64 @@ ggplot() +
 # Highlights the reason why spatio-temporal resolution on the kind of thematic class we're interested in is so important
 # N.B. there is no "true" dataset and both subject to error
 
+# function to plot the baseline forest cover and overlay with areas of expected loss
+comparisonPlot <- function(districtx){
+  
+  # shapefile for district
+  dx <- districts[ districts$areanameen %in% districtx, ]
+  
+  # crop and mask forest extent in base year
+  base_esa <- raster::crop(esa_2000_for, dx)
+  base_esa <- raster::mask(base_esa, fasterize::fasterize(dx, base_esa, field="xx"))
+  base_gfc <- raster::crop(gfc_base, dx)
+  base_gfc <- raster::mask(base_gfc, fasterize::fasterize(dx, base_gfc, field="xx"))  
+  
+  # layers showing areas where forest was lost
+  loss_esa <- (esa_for[[1]] - esa_for[[18]]) > 0
+  loss_esa <- crop(loss_esa, dx)
+  loss_esa <- raster::mask(loss_esa, fasterize::fasterize(dx, loss_esa, field="xx"))  
+  loss_gfc <- crop(gfc_loss > 0, dx)
+  loss_gfc <- raster::mask(loss_gfc, fasterize::fasterize(dx, loss_gfc, field="xx"))
+  
+  # for plotting
+  df1 <- as.data.frame(base_esa, xy=TRUE) %>%
+    dplyr::mutate(layer = ifelse(layer==TRUE, 1, 0))
+  df2 <- as.data.frame(loss_esa, xy=TRUE) %>%
+    dplyr::mutate(layer = ifelse(layer==TRUE, 1, 0)) %>%
+    dplyr::filter(layer == 1 & !is.na(layer))
+  px <- ggplot() + 
+    geom_raster(data=df1, aes(x=x, y=y, fill=layer)) + 
+    geom_raster(data=df2, aes(x=x, y=y), fill="red", alpha=0.7) +
+    scale_fill_gradientn(colours=colScale, na.value="white", name="Forest\ncover\n2000") +
+    geom_sf(data=dx, fill=NA) + 
+    maptheme + 
+    ggtitle("ESA-CCI forest cover (2000) and loss (2001-2019)")
+  
+  df3 <- as.data.frame(base_gfc, xy=TRUE)
+  df4 <- as.data.frame(loss_gfc, xy=TRUE) %>%
+    dplyr::mutate(layer = ifelse(layer==TRUE, 1, 0)) %>%
+    dplyr::filter(layer == 1 & !is.na(layer))
+  py <- ggplot() + 
+    geom_raster(data=df3, aes(x=x, y=y, fill=hansen_forestcover_2000)) + 
+    geom_raster(data=df4, aes(x=x, y=y), fill="red", alpha=0.7) +
+    scale_fill_gradientn(colours=colScale, na.value="white", name="Forest\ncover\n2000") +
+    geom_sf(data=dx, fill=NA) + 
+    maptheme + 
+    ggtitle("Hansen forest cover (2000) and loss (2001-2019)")
+  
+  return(gridExtra::grid.arrange(px, py, nrow=1))
+}
 
-### RG: add an extra layer showing the forest in 2000 coloured in grey, and areas of loss overlaid in red
+# specific districts
+# p1 = comparisonPlot("Mdrak District")
+# p2 = comparisonPlot("Khanh Vinh")
 
-district_to_compare = "Krong Bong"
-tc <- districts[ districts$areanameen == district_to_compare, ]
-esa_change_for <- raster::crop(esa_for, tc)
-esa_change_for <- esa_change_for[[1]] - esa_change_for[[18]] 
-esa_change_for <- esa_change_for > 0
-gfc_change_for <- raster::crop(gfc_loss, tc)
-esa_change_for <- raster::mask(esa_change_for, fasterize::fasterize(tc, esa_change_for, field="xx"))
-gfc_change_for <- raster::mask(gfc_change_for, fasterize::fasterize(tc, gfc_change_for, field="xx"))
+# full area
+p3 = comparisonPlot(districts$areanameen)
+ggsave(p3, file="./plots/ForestLoss_ESA_GFC_comparison.png", device="png", units="in", width=12, height=6, dpi=600)
 
-# plot esa
-df1 <- as.data.frame(esa_change_for, xy=TRUE)
-df1$layer <- ifelse(df1$layer == TRUE, 1, 0)
-p1 <- ggplot() + 
-  geom_raster(data=df1, aes(x, y, fill=layer)) +
-  geom_sf(data=tc, fill=NA) + 
-  scale_fill_gradientn(colours=colScale, na.value="white", name="Forest\ncover loss") +
-  maptheme +
-  ggtitle("ESA-CCI forest cover loss")
 
-# plot hansen
-df2 <- as.data.frame(gfc_change_for, xy=TRUE)
-df2$hansen_forestchange_20012019 <- ifelse(df2$hansen_forestchange_20012019 > 1, 1, 0)
-p2 <- ggplot() + 
-  geom_raster(data=df2, aes(x, y, fill=hansen_forestchange_20012019)) +
-  geom_sf(data=tc, fill=NA) + 
-  scale_fill_gradientn(colours=colScale, na.value="white", name="Forest\ncover loss") +
-  maptheme +
-  ggtitle("Hansen forest cover loss")
 
-p_comb <- gridExtra::grid.arrange(p1, p2, nrow=1)
 
 
 
