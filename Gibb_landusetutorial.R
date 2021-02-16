@@ -1,9 +1,9 @@
 
 
-# ======================= LAND COVER LAND USE: PHID Tutorial =========================
+# ======================= LAND COVER LAND USE: PHID TUTORIAL =========================
 
 ## Rory Gibb
-## 18/02/2021
+## PHID Group meeting, 18/02/2021
 
 ## Tutorial outline:
 
@@ -220,7 +220,8 @@ p_proparea <- ggplot(dat) +
 
 # For epi/infectious disease purposes we're usually interested in how *exposure* to some covariate influences relative risk
 # One of the challenges of working with district-level land cover data is that the relationship between summary metrics (e.g. proportion cover)
-# and population "exposure" to forest is highly dependent on the size, shape and population distribution within the district, which are different everywhere
+# and population "exposure" to land cover is highly dependent on how land cover and populations are spatially distributed across the district
+# this is different everywhere, and also depends on the size and shape of the district
 # this makes it difficult to understand how comparable this relationship is between different districts
 # aka the "modifiable areal unit problem", aka the bane of life when working with polygon data
 
@@ -229,11 +230,11 @@ p_proparea <- ggplot(dat) +
 # (with the caveat that grid cell resolution (e.g. 300 * 300m) != human daily movement range, but let's ignore that for now)
 # This does require us to decide on some theshold beyond which a grid cell is defined as "forest"
 # For ESA this is predecided for us, as the dataset is categorical (i.e. cells are either "forest" or not)
-# It would be rather trickier for Hansen but here, let's say a grid cell is "forest" if it contains over 50% tree cover
+# We'd have to decide on this approach for Hansen, for example, saying a grid cell is "forest" if it contains over 50% tree cover
 
 # population raster (persons per pixel) from WorldPop at 100m resolution
 # (BIG CAVEAT: these layers are modelled with certain landcover classes as covariates,
-# so this approach requires some careful thought about underlying dependencies/common-cause/collinearity, aka. here be dragons)
+# so this approach requires some careful thought about underlying dependencies/common-cause/collinearity, aka, here be dragons)
 pop <- raster::raster("./data/population_2000.tif")
 plot(log(pop))
 
@@ -273,7 +274,8 @@ p_comparison
 
 # ----------------- Why are these differences so pronounced? ------------------------
 
-# let's take a look at Ninh Hoa in more detail (because there's such a big difference here
+# let's take a look at Ninh Hoa in more detail
+# because there's such a big difference in metrics shown in the previous graph
 
 district_to_compare = "Ninh Hoa"
 nh <- districts[ districts$areanameen == district_to_compare, ]
@@ -311,7 +313,7 @@ ggsave(p_comb, file="./plots/NinhHoa_ForestCover_Population_comparison.png", dev
 # (assuming minimal human movement between cells which is a simplification)
 
 # for an interesting extra exercise, compare this to Krong Pac district, which has an almost identical value for the two metrics
-# change the district_to_compare variable above to "Krong Pac" and run the code to plot
-# what's different here?
+# change the district_to_compare variable above to "Krong Pac" and run the code to plot it
+# can you see what's different in this instance?
 
 
