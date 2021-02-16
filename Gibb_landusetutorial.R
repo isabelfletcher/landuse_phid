@@ -222,7 +222,7 @@ p_proparea <- ggplot(dat) +
 # One of the challenges of working with district-level land cover data is that the relationship between summary metrics (e.g. proportion cover)
 # and population "exposure" to land cover is highly dependent on how land cover and populations are spatially distributed across the district
 # this is different everywhere, and also depends on the size and shape of the district
-# this makes it difficult to understand how comparable this relationship is between different districts
+# consequently, it's difficult to understand how stable and thus comparable this relationship (prop cover -> exposure) is between districts
 # aka the "modifiable areal unit problem", aka the bane of life when working with polygon data
 
 # But what if we flip the question and instead ask, what proportion of the population are "exposed" to forest?
