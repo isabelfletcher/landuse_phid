@@ -419,6 +419,8 @@ result_gfc <- do.call(rbind.data.frame, lapply(1:length(ex_esa), calcForestLossG
 # ---------------- How do the time series calculated from the two differet datasets compare? ---------------
 
 # Combine and plot the two together: these look really different!
+# Part of this difference may be a consequence of ESA-CCI also including forest *gain*
+# But these differences seem really striking - what's going on?
 ggplot() + 
   geom_line(data = result_gfc, aes(as.integer(Year), ForestLossCumulative), col="red") +
   geom_line(data = result_esa, aes(as.integer(Year), -ForestChangeCumulative), col="blue") + 
@@ -426,6 +428,18 @@ ggplot() +
   theme_classic()
 
 
+# Let's plot some district-specific maps comparing forest extent and loss between the two datasets - and see if we can
+# What we can see is that this discrepancy seems to be largely caused by the tree cover losses (in Hansen dataset) 
+# occurring in areas that were already classed as "not forest" by ESA-CCI. This is because the categorical classification
+# Can only class 300m res cells as "forest/not forest", so cells that contain lots of tree-cover are still classed as "not forest" as they fall below this threshold
+# This could be problematic for detecting the kinds of deforestation we might be interested in for zoonotic/VBD risk
+# Where we're not only interested in very large-scale, detectable clear-cutting
+# But also finer-scale fragmentation/edge effects that create human-wildlife-vector interfaces
+# Highlights the reason why spatio-temporal resolution on the kind of thematic class we're interested in is so important
+# N.B. there is no "true" dataset and both subject to error
+
+
+### RG: add an extra layer showing the forest in 2000 coloured in grey, and areas of loss overlaid in red
 
 district_to_compare = "Krong Bong"
 tc <- districts[ districts$areanameen == district_to_compare, ]
