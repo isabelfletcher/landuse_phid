@@ -19,7 +19,7 @@
 # ------------- Setup and dependencies ----------------
 
 # directory
-setwd("C:/Users/roryj/Documents/PhD/202007_lshtm_dengue/teaching/phid_landuse/")
+setwd("C:/Users/roryj/Documents/PhD/202007_lshtm_dengue/teaching/phid_landuse/landuse_phid/")
 
 # install and load dependencies
 # all of these are core to using R as a GIS
@@ -154,8 +154,8 @@ ggsave(p_comb, file="./plots/ForestCover_2000_Comparison.png", device="png", uni
 # ================== Exercise 2: Compare metrics of forest cover across the different districts ========================
 
 
-# We'll calculate three metrics of forest cover in 2000 across the focal districts and compare how they look
-# Total area, proportion cover, and population-weighted cover
+# We'll calculate three metrics of forest cover in 2000 across the focal districts and compare how they describe the land cover configuration
+# These are total area, proportion cover, and population-weighted cover
 
 
 
@@ -218,22 +218,24 @@ p_proparea <- ggplot(dat) +
 
 # ------------------- Calculating population-weighted forest cover ----------------------
 
-# For epi/infectious disease purposes we're usually interested in how *exposure* to some covariate influences relative risk
-# One of the challenges of working with district-level land cover data is that the relationship between summary metrics (e.g. proportion cover)
-# and population "exposure" to land cover is highly dependent on how land cover and populations are spatially distributed across the district
-# this is different everywhere, and also depends on the size and shape of the district
-# consequently, it's difficult to understand how stable and thus comparable this relationship (prop cover -> exposure) is between districts
-# aka the "modifiable areal unit problem", aka the bane of life when working with polygon data
+# For epi/infectious disease purposes we're usually interested in how *exposure* to some covariate influences relative risk.
+# Often the disease data we have are aggregated to the admin unit level, e.g. counts per month per district.
+
+# One of the challenges of pairing these with district-level land cover estimates is that the relationship between summary LC metrics (e.g. proportion cover)
+# and population "exposure" to land cover is highly dependent on how land cover and populations are spatially distributed across the district.
+# This is different everywhere, and also depends on the size and shape of the district.
+# Consequently, it's difficult to understand how stable and thus comparable this relationship (prop cover -> exposure) is between districts
+# aka the "modifiable areal unit problem", aka the bane of life when working with polygon data.
 
 # But what if we flip the question and instead ask, what proportion of the population are "exposed" to forest?
 # We can approximate this by calculating the proportion of the population that fall within grid cells defined as forest
-# (with the caveat that grid cell resolution (e.g. 300 * 300m) != human daily movement range, but let's ignore that for now)
-# This does require us to decide on some theshold beyond which a grid cell is defined as "forest"
-# For ESA this is predecided for us, as the dataset is categorical (i.e. cells are either "forest" or not)
-# We'd have to decide on this approach for Hansen, for example, saying a grid cell is "forest" if it contains over 50% tree cover
+# (with the caveat that grid cell resolution (e.g. 300 * 300m) != human daily movement range, but let's ignore that for now).
+# This does require us to decide on some theshold beyond which a grid cell is defined as "forest".
+# For ESA this is predecided for us, as the dataset is categorical (i.e. cells are either "forest" or not).
+# We'd have to decide on this approach for Hansen, for example, saying a grid cell is "forest" if it contains over 50% tree cover.
 
-# population raster (persons per pixel) from WorldPop at 100m resolution
-# (BIG CAVEAT: these layers are modelled with certain landcover classes as covariates,
+# Load fine-scale population raster (persons per pixel) from WorldPop at 100m resolution.
+# (big caveat: these layers are modelled with certain landcover classes as covariates,
 # so this approach requires some careful thought about underlying dependencies/common-cause/collinearity, aka, here be dragons)
 pop <- raster::raster("./data/population_2000.tif")
 plot(log(pop))
@@ -249,7 +251,7 @@ plot(esa_to_extract)
 # extract using exactextractr
 ex_esa <- exactextractr::exact_extract(esa_to_extract, districts)
 
-#  calculate population weighted cover
+# calculate population weighted cover
 calcPWForest = function(x){ 
   x <- x[ !is.na(x$forest), ] # remove NA cells at margin
   x$weight <- (x$population * x$coverage_fraction) / sum(x$population, na.rm=TRUE) # population weights
@@ -261,8 +263,8 @@ result_pw <- data.frame(district = shp$areanameen, PopulationWeighted = sapply(e
 result_pw$TotalArea <- result$ESACCI
 result_pw$ProportionCover <- result_pw$TotalArea / as.vector(sf::st_area(shp)/10^6)
 
-# create barplot to compare the two
-# can see there's a really huge difference for some districts that creates a substantially different exposure covariate
+# If we create a barplot to compare the two
+# We can see there's a really huge difference for some districts, which creates a substantially different picture of forest "exposure".
 dat <- result_pw[ , c(1,2,4)] %>% reshape2::melt(id.vars=c(1))
 p_comparison <- ggplot(dat) + 
   geom_bar(aes(district, value, fill=variable), stat="identity", position=position_dodge()) + 
@@ -274,8 +276,7 @@ p_comparison
 
 # ----------------- Why are these differences so pronounced? ------------------------
 
-# let's take a look at Ninh Hoa in more detail
-# because there's such a big difference in metrics shown in the previous graph
+# Let's take a look at Ninh Hoa in more detail, because there's such a big difference in the metrics shown in the previous graph.
 
 district_to_compare = "Ninh Hoa"
 nh <- districts[ districts$areanameen == district_to_compare, ]
@@ -307,13 +308,156 @@ p2 <- ggplot() +
 p_comb <- gridExtra::grid.arrange(p1, p2, nrow=1)
 ggsave(p_comb, file="./plots/NinhHoa_ForestCover_Population_comparison.png", device="png", units="in", width=12, height=6, dpi=600)
 
-# visualising both shows that the centre of the district is urbanised and much more focally populated than the margins
-# whereas the forested area, although very large, covers mainly the less densely-populated margins of the district
+# Visualising both for Ninh Hoa shows that the centre of the district is urbanised and much more focally populated than the margins.
+# Whereas the forested area, although very large, covers mainly the less densely-populated margins of the district
 # so a simple proportion cover would overestimate the exposure of the population to forested areas
-# (assuming minimal human movement between cells which is a simplification)
+# (assuming minimal human movement between cells, which is a simplification but one we'll stick with for now).
 
-# for an interesting extra exercise, compare this to Krong Pac district, which has an almost identical value for the two metrics
-# change the district_to_compare variable above to "Krong Pac" and run the code to plot it
-# can you see what's different in this instance?
+# For an interesting extra exercise, compare this to Krong Pac district, which has an almost identical value for the two metrics.
+# Change the district_to_compare variable above to "Krong Pac" and run the code to plot it -- can you see what's different in this instance?
 
 
+
+
+# ====================== Exercise 3: Temporal trends in forest cover change at the district-level =========================
+
+# Next, let's examine what the different datasets suggest about how forest cover changed in our focal districts between 2001 and 2018.
+# If we were deriving a covariate, we could take a similar approach to the above and try to roughly approximate "forest loss exposure" within the district over time
+# Here the main focus is to compare how similar (or different) the two time series of forest change look for the different source datasets
+
+
+
+# ------------- ESA-CCI ------------
+
+# Here we'll need all 19 raster layers (each corresponding to a year) and we'll classify the whole stack based on forest/not forest
+# Again we'll stack with area to calculate area of forest at each stage
+esa_for <- esa[[ 2:nlayers(esa) ]] %in% esa_for_class$CCI_var
+esa_to_extract <- raster::stack(esa_for, raster::area(esa_for[[1]]))
+names(esa_to_extract) <- c(paste("forest", 2001:2018, sep="_"), "area")
+ex_esa <- exactextractr::exact_extract(esa_to_extract, districts)
+
+# again, each item in the list corresponds to the district, and the dataframe contains forest estimates for each year 
+ex_esa[[1]]
+
+# Write a function to calculate the summary info we're interested in
+calcForestChange = function(x){
+  
+  # the xth element of the list
+  xx <- ex_esa[[ x ]]
+  
+  xx <- reshape2::melt(xx, id.vars = c("area", "coverage_fraction")) # make longitudinal
+  xx <- xx %>%
+    dplyr::filter(value == 1) %>% # keep only forested cells
+    dplyr::mutate(area = area * coverage_fraction) %>% # multiply area by coverage fraction
+    dplyr::group_by(variable) %>% # for each year
+    dplyr::summarise(ForestCover = sum(area, na.rm=TRUE))
+  
+  # forest change from 1 year to the next 
+  # n.b. we set 2001 to NA because we have no data to compare from the year before
+  xx$ForestChange <- c(NA, xx$ForestCover[ 2:nrow(xx)] - xx$ForestCover[ 1:(nrow(xx)-1)])
+  
+  # cumulative forest change
+  xx$ForestChangeCumulative <- c(NA, cumsum(xx$ForestChange[ 2:nrow(xx)] ))
+  
+  # finally, set variable to the year and index with the district name
+  xx$variable <- unlist(lapply(strsplit(as.vector(xx$variable), "_"), "[", 2))
+  xx <- rename(xx, "Year" = variable)
+  xx$district <- districts$areanameen[x]
+  return(xx)
+}
+
+# run for all districts
+result_esa <- do.call(rbind.data.frame, lapply(1:length(ex_esa), calcForestChange))
+
+# plot
+#ggplot(result_esa) + geom_line(aes(as.integer(Year), -ForestChangeCumulative)) + facet_wrap(~district) + geom_hline(yintercept=0, lty=2)
+
+
+
+# -------------------- GFC Hansen data --------------------------
+
+# Here we can work with the Hansen change raster, which encodes the year in which the grid cell changed from "forest" to "non forest"
+# But we still need the base layer to tell us what the starting proportion cover was
+# And also n.b. that this only encodes annual *loss* (i.e. it does not show if forest was gained during that time)
+gfc_to_extract <- raster::stack(gfc_base, gfc_loss, raster::area(gfc_base))
+names(gfc_to_extract) <- c("basecover", "lossyear", "area")
+ex_gfc <- exactextractr::exact_extract(gfc_to_extract, districts)
+
+# Here, again, each element of the list contains all our extracted information per district
+head(ex_gfc[[1]])
+
+# So let's write a function to calculate yearly estimated area of forest lost
+calcForestLossGFC = function(x){
+  
+  # for the xth element
+  xx <- ex_gfc[[x]]
+  xx <- xx[ !is.na(xx$basecover), ]
+  
+  # calculate a column that denotes area of forest per grid cell in base year
+  xx$forest_baseyear <- (xx$basecover/100) * xx$area * xx$coverage_fraction
+  
+  # remove all cells that did not lose forest (coded 0) and calculate total area lost per year based on other years
+  xx <- xx[ xx$lossyear != 0, ]
+  xx$lossyear <- xx$lossyear + 2000 # add 2000 to get year
+  xx <- xx %>%
+    dplyr::group_by(lossyear) %>%
+    dplyr::summarise(ForestLoss = sum(forest_baseyear))
+  
+  # calculate cumulative loss
+  xx$ForestLossCumulative <- cumsum(xx$ForestLoss)
+  xx <- rename(xx, "Year" = 1)
+  xx$district <- districts$areanameen[x]
+  return(xx)
+}
+
+# run for all districts
+result_gfc <- do.call(rbind.data.frame, lapply(1:length(ex_esa), calcForestLossGFC))
+
+
+
+
+# ---------------- How do the time series calculated from the two differet datasets compare? ---------------
+
+# Combine and plot the two together: these look really different!
+ggplot() + 
+  geom_line(data = result_gfc, aes(as.integer(Year), ForestLossCumulative), col="red") +
+  geom_line(data = result_esa, aes(as.integer(Year), -ForestChangeCumulative), col="blue") + 
+  facet_wrap(~district) + geom_hline(yintercept=0, lty=2) + 
+  theme_classic()
+
+
+
+district_to_compare = "Krong Bong"
+tc <- districts[ districts$areanameen == district_to_compare, ]
+esa_change_for <- raster::crop(esa_for, tc)
+esa_change_for <- esa_change_for[[1]] - esa_change_for[[18]] 
+esa_change_for <- esa_change_for > 0
+gfc_change_for <- raster::crop(gfc_loss, tc)
+esa_change_for <- raster::mask(esa_change_for, fasterize::fasterize(tc, esa_change_for, field="xx"))
+gfc_change_for <- raster::mask(gfc_change_for, fasterize::fasterize(tc, gfc_change_for, field="xx"))
+
+# plot esa
+df1 <- as.data.frame(esa_change_for, xy=TRUE)
+df1$layer <- ifelse(df1$layer == TRUE, 1, 0)
+p1 <- ggplot() + 
+  geom_raster(data=df1, aes(x, y, fill=layer)) +
+  geom_sf(data=tc, fill=NA) + 
+  scale_fill_gradientn(colours=colScale, na.value="white", name="Forest\ncover loss") +
+  maptheme +
+  ggtitle("ESA-CCI forest cover loss")
+
+# plot hansen
+df2 <- as.data.frame(gfc_change_for, xy=TRUE)
+df2$hansen_forestchange_20012019 <- ifelse(df2$hansen_forestchange_20012019 > 1, 1, 0)
+p2 <- ggplot() + 
+  geom_raster(data=df2, aes(x, y, fill=hansen_forestchange_20012019)) +
+  geom_sf(data=tc, fill=NA) + 
+  scale_fill_gradientn(colours=colScale, na.value="white", name="Forest\ncover loss") +
+  maptheme +
+  ggtitle("Hansen forest cover loss")
+
+p_comb <- gridExtra::grid.arrange(p1, p2, nrow=1)
+
+
+
+# ===================== Exercise 4: Spatial and temporal trends in forest and deforestation exposure at our study sites =========================
