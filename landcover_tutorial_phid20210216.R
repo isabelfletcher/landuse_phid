@@ -243,8 +243,11 @@ p_totalarea <- ggplot(dat) +
   geom_bar(aes(district, value, fill=variable), stat="identity", position=position_dodge()) + 
   theme_classic() + 
   scale_fill_viridis_d(begin=0.2, end=0.7, name="") +
-  ylab("Forest area (km2)")
+  ylab("Forest area (km2)") + 
+  ggtitle("Total forest cover") +
+  theme(plot.title=element_text(hjust=0.5))
 p_totalarea
+
 
 # Now metric 2: proportion of the district area that is covered by forest ("proportion cover").
 # This approach standardises the total forest area by district size, and so enables a more meaningful comparison between different districts
@@ -256,7 +259,9 @@ p_proparea <- ggplot(dat) +
   geom_bar(aes(district, propcover, fill=variable), stat="identity", position=position_dodge()) + 
   theme_classic() + 
   scale_fill_viridis_d(begin=0.2, end=0.7, name="") +
-  ylab("Proportion forest cover")
+  ylab("Proportion forest cover") +
+  ggtitle("Proportion forest cover") +
+  theme(plot.title=element_text(hjust=0.5))
 p_proparea
 
 
