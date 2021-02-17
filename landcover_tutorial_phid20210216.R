@@ -1,17 +1,18 @@
 
 
-# ======================= LAND COVER LAND USE: PHID TUTORIAL =========================
+# ======================= LAND COVER-LAND USE: PHID TUTORIAL =========================
 
 ## Rory Gibb
 ## PHID Group meeting, 18/02/2021
 
 ## Tutorial outline:
 
-# 1. Load, visualise and compare forest extent in 2000 estimated using 2 different datasets (ESA-CCI and Hansen)
-# 2. Make some cool maps
-# 3. Compare forest change trends at district-level estimated using the two datasets
-# 4. Compare forest change metrics to population distribution across districts
-# 5. Compare polygons to points
+# We'll load in some spatial district and point-level data for a study area (a handful of districts in Vietnam) and explore forest cover and how it's changed over time.
+# To do this, we'll...
+# 1. Visualise forest cover across the study area using two different datasets
+# 2. Compare the differences between various summary metrics of forest cover at the district-level and look for problems
+# 3. Use two datasets to derive time series of forest loss at district-level, and investigate discrepancies between products
+# 4. Use fine-scale forest loss data to examine deforestation trends at several focal "study sites"
 
 
 
@@ -22,7 +23,7 @@
 setwd("C:/Users/roryj/Documents/PhD/202007_lshtm_dengue/teaching/phid_landuse/landuse_phid/")
 
 # install and load dependencies
-# all of these are core to using R as a GIS
+# the first line of library() calls are packages that are core to using R as a GIS
 #install.packages(c("raster", "rgdal", "sp", "sf", "exactextractr", "ncdf4", "ggplot2", "dplyr", "fasterize", "RColorBrewer", "gridExtra"))
 library(raster); library(rgdal); library(sp); library(sf); library(exactextractr); library(ncdf4)
 library(ggplot2); library(fasterize); library(RColorBrewer); library(gridExtra); library(dplyr)
@@ -33,7 +34,8 @@ maptheme <- theme_classic() +
         axis.text = element_blank(),
         axis.ticks = element_blank(),
         plot.title = element_text(size=14, hjust=0.5),
-        axis.title = element_blank())
+        axis.title = element_blank(),
+        strip.background = element_blank())
 
 # nice colour scale for mapping
 colScale <- colorRampPalette(RColorBrewer::brewer.pal(9, name="YlGnBu"))(300)
@@ -43,13 +45,13 @@ colScale <- colorRampPalette(RColorBrewer::brewer.pal(9, name="YlGnBu"))(300)
 
 # =================== Load and view areal data ========================
 
-# We start by loading a shapefile of district polygons for our area of interest:
+# Let's start by loading a shapefile of district polygons for our area of interest:
 # a cluster of districts in the central coastal-to-highlands transition in Vietnam (Dak Lak and Khanh Hoa provinces).
 # Sections of this region have been hotspots of recent forest loss in the country, and we'd like to examine this in more detail.
 districts <- sf::st_read("./data/focal_districts.shp")
-districts$xx = 1
+districts$xx <- 1
 
-# generate some point location data (e.g. villages/study sites/disease occurrences)
+# I've generated and pre-saved some point location data (these could be geolocated study sites/disease case occurrences)
 # study_sites <- sp::spsample(as_Spatial(districts), n=10, type="random")
 # study_sites <- sf::st_as_sf(SpatialPointsDataFrame(study_sites, data.frame(SiteID = 1:10)))
 # write.csv(as.data.frame(as_Spatial(study_sites)) %>% dplyr::rename("x"=2, "y"=3), "./data/studysite_locations.csv", row.names=FALSE)
@@ -159,6 +161,37 @@ ggsave(p_comb, file="./plots/ForestCover_2000_Comparison.png", device="png", uni
 
 
 
+# ------------ So what's the benefit of a dataset like ESA-CCI, then? ---------------
+
+# Although ESA-CCI lacks fine-scale spatial resolution of specific land cover phenomena (such as tree cover) 
+# What it provides is good thematic and temporal resolution; the full database provides annual rasters of 37 LCLU classes from 1992 to 2019
+# So, for example, we might instead be interested in the amount of irrigated cropland in our study area (e.g. rice paddies as mosquito breeding sites)
+# We can do this using the same approach - and this isn't something that a dataset like Hansen GFC provides.
+
+# Let's look at irrigated cropland cover at the start and end of the time series
+esa_crop <- esa[[ c(1, nlayers(esa)) ]] %in% esa_class$CCI_var[ esa_class$CCI_class == "irrigated_cropland" ]
+esa_crop <- raster::mask(esa_crop, mask_esa)
+esadf <- as.data.frame(esa_crop, xy=TRUE) %>%
+  dplyr::rename("Irrigated_2000"=3, "Irrigated_2018"=4) %>%
+  reshape2::melt(id.vars = 1:2) %>%
+  dplyr::mutate(value = ifelse(value==TRUE, 1, 0))
+
+# We can see that there's a relatively small amount of irrigated cropland, that it's largely concentrated in the furthest east of the study area (Ninh Hoa),
+# And also that its extent hasn't changed too much over the time series.
+p3 <- ggplot() + 
+  geom_raster(data=esadf, aes(x, y, fill=value)) +
+  geom_sf(data=districts, fill=NA) + 
+  geom_sf(data=study_sites, col="red") +
+  scale_fill_gradientn(colours=colScale, na.value="white", name="Irrigated\ncover") +
+  maptheme + 
+  facet_wrap(~variable)
+p3
+
+# The COPERNICUS land cover data provides a similar level of thematic detail with the added benefit of good spatial resolution
+# As well as fractional grid cell cover estimates (e.g. x% of the cell is taken up by a particular class)
+# However it's only available from 2015 to 2019, so lacks the long-term perspective offered by ESA-CCI.
+
+
 
 
 
@@ -227,6 +260,7 @@ p_proparea <- ggplot(dat) +
 p_proparea
 
 
+
 # ------------------- Calculating population-weighted forest cover ----------------------
 
 # For epi/infectious disease purposes we're usually interested in how *exposure* to some covariate influences relative risk.
@@ -234,7 +268,7 @@ p_proparea
 
 # One of the challenges of pairing these with district-level land cover estimates is that the relationship between summary LC metrics (e.g. proportion cover)
 # and population "exposure" to land cover is highly dependent on how land cover and populations are spatially distributed across the district.
-# This is different everywhere, and depends on the size and shape of the district as well as, for example, its agricultural and urbanisation characteristics.
+# This is different everywhere and depends on the size and shape of the district as well as, for example, its agricultural and urbanisation characteristics.
 # Consequently, it's difficult to understand how stable and thus comparable this relationship (prop cover -> exposure) is between districts.
 # This is an example of the "modifiable areal unit problem", aka the bane of life when working with polygon data.
 
@@ -243,10 +277,10 @@ p_proparea
 # (with the caveat that grid cell resolution (e.g. 300 * 300m) != human daily movement range, but let's ignore that for now).
 # This does require us to decide on some theshold beyond which a grid cell is defined as "forest".
 # For ESA this is predecided for us, as the raster dataset is categorical; i.e. cells are either "forest" or not.
-# We'd have to decide on this approach for Hansen where grid cells contain proportion cover; for example, by saying a grid cell is "forest" if it contains over 50% tree cover.
+# We'd have to decide on this approach for Hansen where grid cells contain proportion cover; for example, by deciding a grid cell is "forest" if it contains over 50% tree cover.
 
 # Load fine-scale population raster (persons per pixel) from WorldPop at 100m resolution.
-# (big caveat: these layers are modelled with certain landcover classes included as predictor covariates,
+# (big caveat on the WorldPop data: these layers are modelled with certain landcover classes included as predictor covariates,
 # so this approach requires some careful thought about underlying dependencies/common-cause/collinearity, aka, here be dragons)
 pop <- raster::raster("./data/population_2000.tif")
 plot(log(pop))
@@ -262,7 +296,7 @@ plot(esa_to_extract)
 # extract using exactextractr
 ex_esa <- exactextractr::exact_extract(esa_to_extract, districts)
 
-# calculate population weighted cover
+# function to calculate population weighted cover for each district
 calcPWForest = function(x){ 
   x <- x[ !is.na(x$forest), ] # remove NA cells at margin
   x$weight <- (x$population * x$coverage_fraction) / sum(x$population, na.rm=TRUE) # population weights
@@ -275,7 +309,7 @@ result_pw$TotalArea <- result$ESACCI
 result_pw$ProportionCover <- result_pw$TotalArea / as.vector(sf::st_area(districts)/10^6)
 
 # Now, when we create a barplot to compare the two, we can see there's a really huge difference for some districts.
-# This creates a substantially different picture of forest "exposure" than proportion cover would suggest. Why?
+# This creates a substantially different picture of forest "exposure" than proportion cover would suggest. Why is this?
 dat <- result_pw[ , c(1,2,4)] %>% reshape2::melt(id.vars=c(1))
 p_comparison <- ggplot(dat) + 
   geom_bar(aes(district, value, fill=variable), stat="identity", position=position_dodge()) + 
@@ -291,7 +325,7 @@ p_comparison
 # Let's take a look at Ninh Hoa in more detail, because there's such a big difference in the proportion cover/population weighted metrics.
 
 # crops and masks population and forest cover raster to the specified district
-district_to_compare = "Ninh Hoa"
+district_to_compare <- "Ninh Hoa"
 nh <- districts[ districts$areanameen %in% district_to_compare, ]
 esa_nh <- raster::crop(esa_2000_for, nh)
 esa_nh <- raster::mask(esa_nh, fasterize::fasterize(nh, esa_nh, field="xx"))
@@ -322,7 +356,7 @@ p_comb <- gridExtra::grid.arrange(p1, p2, nrow=1)
 ggsave(p_comb, file="./plots/NinhHoa_ForestCover_Population_comparison.png", device="png", units="in", width=12, height=6, dpi=600)
 
 # Visualising both for Ninh Hoa shows that the centre of the district is urbanised and much more focally populated than the margins.
-# Whereas the forested area, although very large, covers mainly the less densely-populated margins of the district.
+# Whereas the forested area, although large, covers mainly the less densely-populated margins of the district.
 # So a simple proportion cover would overestimate the exposure of the population to forested areas
 # (assuming minimal human movement between cells, which is a simplification but one we'll stick with for now).
 # This plot also shows up a few weird quirks of the ESA-CCI data that are an issue in some parts of the world especially in the early part
@@ -334,11 +368,12 @@ ggsave(p_comb, file="./plots/NinhHoa_ForestCover_Population_comparison.png", dev
 
 
 
+
 # ====================== Exercise 3: Temporal trends in forest cover change at the district-level =========================
 
 # Next, let's examine what the different datasets suggest about how forest cover changed in our focal districts between 2001 and 2018.
-# If we were deriving a covariate, we could take a similar approach to the above and try to roughly approximate "forest loss exposure" within the district over time
-# Here the main focus is to compare how similar (or different) the two time series of forest change look for the different source datasets
+# If we were deriving a model covariate, we could take a similar approach to the above and try to roughly approximate "forest loss exposure" within the district over time
+# But here our main focus is simply to compare how similar (or different) the two time series of forest change look for the different source datasets
 
 
 
@@ -377,12 +412,14 @@ calcForestChange = function(x){
   # finally, set variable to the year and index with the district name
   datx$variable <- unlist(lapply(strsplit(as.vector(datx$variable), "_"), "[", 2))
   datx <- rename(datx, "Year" = variable)
-  datx$district <- districts$areanameen[x]
+  datx$id <- x
   return(datx)
 }
 
-# run for all districts
+# run for all districts and add in district name
 result_esa <- do.call(rbind.data.frame, lapply(1:length(ex_esa), calcForestChange))
+result_esa <- left_join(result_esa, data.frame(id = 1:nrow(districts), district=districts$areanameen))
+
 
 # plot
 #ggplot(result_esa) + geom_line(aes(as.integer(Year), -ForestChangeCumulative)) + facet_wrap(~district) + geom_hline(yintercept=0, lty=2)
@@ -391,7 +428,7 @@ result_esa <- do.call(rbind.data.frame, lapply(1:length(ex_esa), calcForestChang
 
 # -------------------- GFC Hansen data --------------------------
 
-# Here we can work with the Hansen change raster, which encodes the year in which the grid cell changed from "forest" to "non forest"
+# Here we need to work with the Hansen change raster, which encodes the year in which the grid cell changed from "forest" to "non forest"
 # But we still need the base layer to tell us what the starting proportion cover was
 # And also n.b. that this only encodes annual *loss* (i.e. it does not show if forest was gained during that time)
 gfc_to_extract <- raster::stack(gfc_base, gfc_loss, raster::area(gfc_base))
@@ -419,15 +456,15 @@ calcForestLossGFC = function(x){
     dplyr::summarise(ForestLoss = sum(forest_baseyear)) %>%
     dplyr::arrange(lossyear) %>%
     dplyr::mutate(ForestLossCumulative = cumsum(ForestLoss),
-                  district = districts$areanameen[x]) %>%
+                  id = x) %>%
     dplyr::rename("Year"=1)
   
   return(xx)
 }
 
-# run for all districts
-result_gfc <- do.call(rbind.data.frame, lapply(1:length(ex_esa), calcForestLossGFC))
-
+# run for all districts and add district names
+result_gfc <- do.call(rbind.data.frame, lapply(1:length(ex_gfc), calcForestLossGFC))
+result_gfc <- left_join(result_gfc, data.frame(id = 1:nrow(districts), district=districts$areanameen))
 
 
 
@@ -441,6 +478,7 @@ ggplot() +
   geom_line(data = result_esa, aes(as.integer(Year), -ForestChangeCumulative), col="blue") + 
   facet_wrap(~district) + geom_hline(yintercept=0, lty=2) + 
   theme_classic()
+
 
 # One way to examine this is to visualise what forest losses look like spatially and in relation to the extent of baseline forest
 # So let's create a function to combine these in a single plot and compare where the two datasets are showing forest losses
@@ -505,19 +543,107 @@ ggsave(p3, file="./plots/ForestLoss_ESA_GFC_comparison.png", device="png", units
 # The full plot across the entire study area makes it clearer what's driving this discrepancy between datasets:
 # the majority of detected tree cover loss shown by the Hansen dataset occurred in areas that were not classified as forest by ESA even in the base year.
 # This is because the 300m resolution of ESA-CCI and categorical classifications (rather than proportion cover) means that cells can only be 
-# classified as "forest" once they exceed a % cover threshold, below which they fall into a separate forest mosaic/shrubland category.
+# classified as "forest" once they exceed a % cover threshold, below which they fall into a separate agri/shrubland mosaic category.
 # This firstly means that a lot of tree cover is missed in the baseline map, but also that the change map potentially very significantly underestimates 
-# the amount of forest loss that actually occurred in smaller stands, fragments and areas of patchy crop/mosaic/forest cover,
-# as well as the gradual losses of tree cover in cells that remain classed as "forest" because they're still above the classification thereshold.
-# (Although it's worth caveatting that without ground-truth data there's no one "true" dataset here, and GFC also contains uncertainty so is not a gold standard)
+# the amount of tree cover loss that actually occurred in smaller stands, forest edges, fragments and areas of patchy crop/mosaic/forest cover,
+# It also misses relatively small-scale losses of tree cover in cells that remain classed as "forest" in ESA because they're still above the classification threshold.
+# (Although it's worth caveatting that without validation/ground-truthing there's no one "true" dataset here, and GFC also contains error so is not a gold standard)
 
 # These discrepancies are definitely potentially an issue for disease modelling, because the kinds of risky interfaces 
 # We're often particularly interested in for zoonotic/VBD risk are not necessarily driven by large-scale clear-cutting (which ESA would likely detect)
 # But are often the kinds of border phenomena - fragmentation, edge effects, ecotonal agricultural landscapes - that facilitate people and ecological communities mixing
-# So this comparison highlights why it's really important to try and select a dataset that's best suited to capturing the phenomena that
-# we're interested in testing (in terms of the trade-off between spatial, temporal and thematic resolution).
+# So this comparison highlights why it's really important to try and select a dataset that's best suited to capturing the phenomenon that
+# we're interested in investigating (by navigating that balance between spatial, temporal and thematic resolution).
 
 
 
 
-# ===================== Exercise 4: Spatial and temporal trends in forest and deforestation exposure at our study sites =========================
+
+# ===================== Exercise 4: Spatial and temporal trends in deforestation at our study sites =========================
+
+# Lastly, let's take a look at using some point data to examine trends in forest loss at our geolocated study sites.
+# The main point of this section is to highlight the value of having finer-scale, geolocated point data, rather than working with polygons
+# as this makes it much easier to standardise and compare our land cover (change) exposure variables.
+# Let's say that our study sites are villages for which we've collated data on the annual incidence of a disease, let's say malaria
+# And we want to know if there's any evidence that deforestation rates are associated with higher risk of malaria.
+# We've established from our analyses above that the ESA-CCI dataset may not be the best choice for capturing trends in tree cover *change*
+# at the localised, epidemiologically-relevant scale. 
+# So for this, we'll just focus on using the GFC data.
+
+# Let's remind ourselves of the geographical distribution of our study districts 
+ggplot() + 
+  geom_sf(data=districts, fill="grey95") + 
+  geom_sf(data=study_sites, col="red") +
+  maptheme
+
+# These are point locations, so extracting forest change in a single 30m grid cell at that location is unlikely to tell us anything useful about broad
+# patterns of tree cover change in the surroundings of the village.
+# What we can instead do is examine tree cover change within a specified radius (e.g. ~5km) of the focal point location.
+# So let's make a buffer object that does this, first harmonising the coordinate reference system between our points and our forest raster
+# N.B. We'll get a warning here about st_buffer; this is important (and requires some CRS transformation) but for this tutorial we'll ignore this as the error shouldn't be huge
+sf::st_crs(study_sites) <- crs(gfc_loss)
+buffer_5km <- sf::st_buffer(study_sites, 0.045) # The second argument specifies the radius in arc degrees (~111km == 1 degree at equator; 5km = 5/111)
+
+# Now we can see what our buffer zones look like.
+ggplot() + 
+  geom_sf(data=districts, fill="grey95") + 
+  geom_sf(data=buffer_5km, fill="coral2", color=NA, alpha=0.4) +
+  geom_sf(data=study_sites, col="red") +
+  maptheme
+
+# The code and function we wrote above to calculate forest loss from the GFC data works just the same with buffers as with polygons, so we just use the same code
+# But extract for the buffers instead, and add in the village IDs afterwards
+ex_gfc <- exactextractr::exact_extract(gfc_to_extract, buffer_5km)
+points_gfc <- do.call(rbind.data.frame, lapply(1:length(ex_gfc), calcForestLossGFC))
+points_gfc <- left_join(points_gfc, data.frame(id = 1:nrow(study_sites), SiteID = study_sites$SiteID))
+
+# Now we can look at what these trends look like for our 10 villages; firstly, let's examine cumulative forest loss over the monitoring period.
+# We can see that a cluster of villages have experienced particularly high rates of surrounding tree cover loss, whereas others much less so, if any.
+ggplot(points_gfc) +
+  geom_line(aes(Year, ForestLossCumulative), col="darkred") +
+  facet_wrap(~SiteID) + 
+  theme_minimal()
+
+# What do these trends look like in terms of annual rates of forest loss?
+# Evidence from some validation exercises using the GFC data suggests that most tree cover loss classifications are correctly detected to within 1 year either side of the reported year
+# (This lag may be to do with, for example, discrepancies between when during the year the Landsat image was taken, compared to when the stand was lost).
+# So let's smooth our annual loss time series with a 3-year rolling mean around the focal year to attempt to smooth this out for visualisation.
+points_gfc <- points_gfc %>%
+  dplyr::arrange(SiteID, Year) %>%
+  dplyr::group_by(SiteID) %>%
+  dplyr::mutate(ForestLoss_Smoothed = data.table::frollmean(ForestLoss, 3, align="center"))
+
+# When we plot them, we can see that the villages differ in terms of when forest loss rates were highest; some show high rates much later in the time series than others. 
+ggplot(points_gfc) +
+  geom_line(aes(Year, ForestLoss_Smoothed), col="darkred") +
+  facet_wrap(~SiteID) + 
+  theme_minimal() + 
+  ylab("Forest loss rate (km2/year)")
+
+# Finally let's make a map showing total forest loss over space (where size represents total loss over the time period)
+gfc_finalyear <- points_gfc[ points_gfc$Year == 2019, ] %>% dplyr::select(SiteID, ForestLossCumulative)
+study_sites <- left_join(study_sites, gfc_finalyear)
+ggplot() + 
+  geom_sf(data=districts, fill="grey95") + 
+  geom_sf(data=study_sites, aes(size = ForestLossCumulative), alpha=0.3) +
+  geom_sf(data=study_sites, col="red") +
+  scale_size_continuous(range=c(1, 20), name="Total\nforest\nloss (km2)") +
+  maptheme
+
+# What's nice about these estimates is that they're directly comparable between villages and, all else being equal,
+# can be interpreted as representing the same measure of exposure to deforestation; 
+# this is because each represents forest change in a buffer of the exact same size around the focal village.
+# Which is in contrast to the district-level extracted estimates which, as we saw above, 
+# are highly sensitive to the size, shape and configuration of the socio-ecological environment of any given district.
+
+# One final point to raise is a reminder that all remotely-sensed land cover products are derived from predictive statistical/ML image classification of the original satellite
+# imagery, and as such are subject to predictive error and uncertainty, just like with any other modelled product.
+# These issues may vary over space and time (for example, as we saw in the maps above, ESA-CCI can behave very weirdly in the early part of the time series)
+# So it always worth, firstly, carefully visualising the land cover data for the time period of interest and cross-referencing multiple datasets to check for signifcant discepancies
+# It's also worth checking the literature for studies validating the products of interest in or near your study region (for example, the accuracy of GFC on tropical forests appears to be
+# very good for Latin America and SE Asia, but substantially less so for sub-Saharan Africa)
+# Finally, always read the documentation carefully to check the product is suitable for the thing you're interested in using it for!
+
+
+# ================================================== ENDS ========================================================
+
