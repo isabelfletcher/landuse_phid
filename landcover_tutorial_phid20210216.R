@@ -483,7 +483,7 @@ ggplot() +
 # One way to examine this is to visualise what forest losses look like spatially and in relation to the extent of baseline forest
 # So let's create a function to combine these in a single plot and compare where the two datasets are showing forest losses
 
-# function to plot the baseline forest cover and overlay with areas of expected loss
+# function to plot the baseline forest cover and overlay with areas of loss from 2001-2019
 # argument "districtx" is a single district name or a vector of names to include
 comparisonPlot <- function(districtx){
   
@@ -630,6 +630,7 @@ ggplot() +
   scale_size_continuous(range=c(1, 20), name="Total\nforest\nloss (km2)") +
   maptheme
 
+
 # What's nice about these estimates is that they're directly comparable between villages and, all else being equal,
 # can be interpreted as representing the same measure of exposure to deforestation; 
 # this is because each represents forest change in a buffer of the exact same size around the focal village.
@@ -639,10 +640,11 @@ ggplot() +
 # One final point to raise is a reminder that all remotely-sensed land cover products are derived from predictive statistical/ML image classification of the original satellite
 # imagery, and as such are subject to predictive error and uncertainty, just like with any other modelled product.
 # These issues may vary over space and time (for example, as we saw in the maps above, ESA-CCI can behave very weirdly in the early part of the time series)
-# So it always worth, firstly, carefully visualising the land cover data for the time period of interest and cross-referencing multiple datasets to check for signifcant discepancies
+# So it's always worth, firstly, carefully visualising the land cover data for the time period of interest and cross-referencing multiple datasets to check for notable discrepancies
 # It's also worth checking the literature for studies validating the products of interest in or near your study region (for example, the accuracy of GFC on tropical forests appears to be
 # very good for Latin America and SE Asia, but substantially less so for sub-Saharan Africa)
 # Finally, always read the documentation carefully to check the product is suitable for the thing you're interested in using it for!
+
 
 
 # ================================================== ENDS ========================================================
